@@ -204,6 +204,64 @@ body.dark .shake-badge{background:#162a3b;color:#74bdf5}
   .finder-results{grid-template-columns:1fr}
 }
 
+
+/* Nieuw reviewsysteem */
+.review-form{margin-top:18px;background:#f8faf8;border:1px solid var(--line);border-radius:18px;padding:16px}
+.review-form h4{margin:0 0 10px;font-size:17px}
+.rating-picker{display:grid;gap:10px;margin:10px 0 14px}
+.rating-preview{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.rating-preview strong{font-size:26px;color:var(--green2)}
+.fraction-stars{
+  --pct:90%;
+  display:inline-block;
+  font-size:25px;
+  letter-spacing:2px;
+  line-height:1;
+  background:linear-gradient(90deg,#f2b01e var(--pct),#d7dbd7 var(--pct));
+  -webkit-background-clip:text;
+  background-clip:text;
+  color:transparent;
+}
+.rating-slider{width:100%;accent-color:#f2b01e;cursor:pointer}
+.rating-number-input{
+  width:92px;padding:9px 10px;border:1px solid var(--line);border-radius:11px;
+  background:#fff;color:var(--ink);font-weight:900
+}
+.quick-ratings{display:flex;gap:7px;flex-wrap:wrap}
+.quick-rating{
+  border:1px solid var(--line);background:#fff;color:var(--green2);
+  padding:7px 10px;border-radius:999px;font-weight:900;cursor:pointer
+}
+.quick-rating:hover{border-color:#f2b01e}
+.review-form input[type="text"],.review-form textarea{
+  width:100%;border:1px solid var(--line);border-radius:13px;padding:11px 12px;
+  background:#fff;color:var(--ink);font:inherit;margin-top:9px
+}
+.review-form textarea{min-height:95px;resize:vertical}
+.review-submit{
+  margin-top:10px;border:0;border-radius:999px;padding:11px 15px;
+  background:var(--green);color:#fff;font-weight:900;cursor:pointer
+}
+.review-message{font-size:13px;color:var(--green2);font-weight:800;margin-top:8px}
+.user-review-badge{
+  display:inline-block;margin-left:7px;padding:3px 7px;border-radius:999px;
+  background:#eaf8ef;color:var(--green2);font-size:10px;font-weight:900
+}
+body.dark .review-form{background:#172528;border-color:#30403c}
+body.dark .review-form input[type="text"],
+body.dark .review-form textarea,
+body.dark .rating-number-input,
+body.dark .quick-rating{background:#142022;color:var(--ink);border-color:#31443e}
+
+
+.review-actions{display:flex;justify-content:flex-end;margin-top:9px}
+.delete-review-btn{
+  border:1px solid #f0b8c5;background:#fff0f3;color:#b3244f;
+  padding:7px 10px;border-radius:999px;font-weight:900;cursor:pointer
+}
+.delete-review-btn:hover{background:#ffe2e9}
+body.dark .delete-review-btn{background:#3b1f29;color:#ff9ab6;border-color:#69404d}
+
 </style>
 </head>
 <body>
@@ -538,7 +596,72 @@ function toggleFav(id){
   updateSaved();
   renderPopular();
 }
-function rate(id,n){ localStorage.setItem('rating20-'+id,n); renderDetail(recipes.find(x=>x.id===id)); }
+function getUserReviews(id){
+  try{
+    return JSON.parse(localStorage.getItem('sj-user-reviews-'+id)||'[]');
+  }catch(e){
+    return [];
+  }
+}
+function saveUserReviews(id,reviews){
+  localStorage.setItem('sj-user-reviews-'+id,JSON.stringify(reviews));
+}
+function clampRating(value){
+  const n=Math.round(Number(value)*10)/10;
+  return Math.min(5,Math.max(1,Number.isFinite(n)?n:4.5));
+}
+function updateRatingPreview(value,id){
+  const rating=clampRating(value);
+  const slider=document.getElementById('rating-slider-'+id);
+  const number=document.getElementById('rating-number-'+id);
+  const label=document.getElementById('rating-label-'+id);
+  const stars=document.getElementById('rating-stars-'+id);
+  if(slider && Number(slider.value)!==rating) slider.value=rating;
+  if(number && Number(number.value)!==rating) number.value=rating.toFixed(1);
+  if(label) label.textContent=fmt(rating);
+  if(stars) stars.style.setProperty('--pct',((rating/5)*100)+'%');
+}
+function setQuickRating(id,value){
+  updateRatingPreview(value,id);
+}
+function submitReview(id){
+  const nameEl=document.getElementById('review-name-'+id);
+  const textEl=document.getElementById('review-text-'+id);
+  const numberEl=document.getElementById('rating-number-'+id);
+  const message=document.getElementById('review-message-'+id);
+
+  const name=(nameEl?.value||'').trim() || 'Bezoeker';
+  const text=(textEl?.value||'').trim();
+  const rating=clampRating(numberEl?.value||4.5);
+
+  if(text.length<3){
+    if(message) message.textContent='Schrijf eerst een korte review.';
+    return;
+  }
+
+  const reviews=getUserReviews(id);
+  reviews.unshift({
+    name,
+    rating,
+    text,
+    createdAt:Date.now()
+  });
+  saveUserReviews(id,reviews);
+
+  renderDetail(recipes.find(r=>r.id===id));
+}
+
+function deleteUserReview(id,index){
+  const reviews=getUserReviews(id);
+  if(index<0 || index>=reviews.length) return;
+
+  const ok=confirm('Weet je zeker dat je deze review wilt verwijderen?');
+  if(!ok) return;
+
+  reviews.splice(index,1);
+  saveUserReviews(id,reviews);
+  renderDetail(recipes.find(r=>r.id===id));
+}
 function photos(inp){ let box=document.getElementById('photos'); [...inp.files].slice(0,3).forEach(f=>{ let rd=new FileReader(); rd.onload=e=>{ let im=document.createElement('img'); im.src=e.target.result; box.appendChild(im)}; rd.readAsDataURL(f) }) }
 function starsHTML(){ return '<span class="stars">★★★★★</span>'; }
 
@@ -643,7 +766,9 @@ function renderDetail(r){
   const ingredients=scaledIngredients(r);
   const nutrition=scaledNutrition(r);
   const portions=getPortions(r.id);
-  const avg=r.reviews.reduce((a,x)=>a+x[1],0)/r.reviews.length;
+  const userReviews=getUserReviews(r.id);
+  const allRatings=[...r.reviews.map(x=>Number(x[1])),...userReviews.map(x=>Number(x.rating))];
+  const avg=allRatings.reduce((a,x)=>a+x,0)/allRatings.length;
   document.getElementById('detail-content').innerHTML = `
     <div class="recipe-box">
       <div class="recipe-top">
@@ -744,9 +869,82 @@ function renderDetail(r){
 
     <div class="feature-section">
       <h3>⭐ Beoordelingen</h3>
-      <div style="font-size:24px;font-weight:900">${fmt(avg)} ${starsHTML()}</div>
-      <div class="rate">${[1,2,3,4,5].map(s=>`<button class="${s<=Number(localStorage.getItem('rating20-'+r.id)||0)?'on':''}" onclick="rate(${r.id},${s})">★</button>`).join('')}</div>
-      ${r.reviews.map(x=>`<div class="review"><b>${x[0]}</b> <span class="stars">★★★★★</span> <b>${fmt(x[1])}</b><p>${x[2]}</p></div>`).join('')}
+
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:24px;font-weight:900">
+        <span>${fmt(avg)}</span>
+        <span class="fraction-stars" style="--pct:${(avg/5)*100}%">★★★★★</span>
+        <span style="font-size:13px;color:var(--muted);font-weight:700">(${r.reviews.length+userReviews.length} reviews)</span>
+      </div>
+
+      <div class="review-form">
+        <h4>Schrijf zelf een review</h4>
+        <div style="font-size:13px;color:var(--muted)">Kies je score precies per 0,1 ster, bijvoorbeeld 4,3 of 4,7.</div>
+
+        <div class="rating-picker">
+          <div class="rating-preview">
+            <strong><span id="rating-label-${r.id}">4,5</span> / 5</strong>
+            <span id="rating-stars-${r.id}" class="fraction-stars" style="--pct:90%">★★★★★</span>
+          </div>
+
+          <input
+            id="rating-slider-${r.id}"
+            class="rating-slider"
+            type="range"
+            min="1"
+            max="5"
+            step="0.1"
+            value="4.5"
+            oninput="updateRatingPreview(this.value,${r.id})"
+          >
+
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <label>
+              Exacte score:
+              <input
+                id="rating-number-${r.id}"
+                class="rating-number-input"
+                type="number"
+                min="1"
+                max="5"
+                step="0.1"
+                value="4.5"
+                oninput="updateRatingPreview(this.value,${r.id})"
+              >
+            </label>
+
+            <div class="quick-ratings">
+              ${[4.0,4.3,4.5,4.7,5.0].map(v=>`<button class="quick-rating" type="button" onclick="setQuickRating(${r.id},${v})">${fmt(v)} ★</button>`).join('')}
+            </div>
+          </div>
+        </div>
+
+        <input id="review-name-${r.id}" type="text" maxlength="30" placeholder="Je naam (optioneel)">
+        <textarea id="review-text-${r.id}" maxlength="500" placeholder="Wat vond je van dit gerecht?"></textarea>
+        <button class="review-submit" type="button" onclick="submitReview(${r.id})">Review plaatsen</button>
+        <div id="review-message-${r.id}" class="review-message"></div>
+      </div>
+
+      ${userReviews.map((x,index)=>`
+        <div class="review">
+          <b>${x.name}</b>
+          <span class="user-review-badge">Jouw review</span>
+          <span class="fraction-stars" style="--pct:${(x.rating/5)*100}%;font-size:16px">★★★★★</span>
+          <b>${fmt(x.rating)}</b>
+          <p>${x.text}</p>
+          <div class="review-actions">
+            <button class="delete-review-btn" type="button" onclick="deleteUserReview(${r.id},${index})">🗑️ Verwijder mijn review</button>
+          </div>
+        </div>
+      `).join('')}
+
+      ${r.reviews.map(x=>`
+        <div class="review">
+          <b>${x[0]}</b>
+          <span class="fraction-stars" style="--pct:${(Number(x[1])/5)*100}%;font-size:16px">★★★★★</span>
+          <b>${fmt(x[1])}</b>
+          <p>${x[2]}</p>
+        </div>
+      `).join('')}
     </div>
 
     <div class="feature-section">
